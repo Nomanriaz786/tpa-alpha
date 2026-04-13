@@ -192,7 +192,8 @@ export default function SettingsPage() {
         ...normalized,
       }
 
-      // Update local state first
+      // Update local state and capture updated networks
+      let updatedNetworks: PaymentNetworkConfig[] = []
       setFormState((current) => {
         const paymentNetworks = [...current.payment_networks]
         if (editingNetworkIndex === null) {
@@ -200,28 +201,15 @@ export default function SettingsPage() {
         } else {
           paymentNetworks[editingNetworkIndex] = nextNetwork
         }
-
+        updatedNetworks = paymentNetworks
         return {
           ...current,
           payment_networks: paymentNetworks,
         }
       })
 
-      // Build complete payment networks array with wallet map
-      const allNetworks: PaymentNetworkUpdate[] = []
-      setFormState((current) => {
-        current.payment_networks.forEach((network) => {
-          if (editingNetworkIndex !== null && current.payment_networks.indexOf(network) === editingNetworkIndex) {
-            allNetworks.push(normalized)
-          } else if (editingNetworkIndex === null || current.payment_networks.indexOf(network) !== editingNetworkIndex) {
-            allNetworks.push(buildNetworkUpdate(network))
-          }
-        })
-        return current
-      })
-
-      // Add the current edited network
-      allNetworks.push(normalized)
+      // Build complete payment networks array including all existing ones
+      const allNetworks = updatedNetworks.map(buildNetworkUpdate)
 
       // Call API to save
       await adminAPI.updateSettings({
@@ -243,11 +231,32 @@ export default function SettingsPage() {
     openNetworkEditor()
   }
 
-  const removeNetwork = (index: number) => {
-    setFormState((current) => ({
-      ...current,
-      payment_networks: current.payment_networks.filter((_, networkIndex) => networkIndex !== index),
-    }))
+  const removeNetwork = async (index: number) => {
+    setError(null)
+    setNetworkSaving(true)
+
+    try {
+      const updatedNetworks = formState.payment_networks.filter((_, networkIndex) => networkIndex !== index)
+      const allNetworks = updatedNetworks.map(buildNetworkUpdate)
+
+      // Save to backend immediately
+      await adminAPI.updateSettings({
+        wallets: buildWalletMap(allNetworks),
+        payment_networks: allNetworks,
+        price_per_month_usd: formState.price_per_month_usd,
+        payment_tolerance_usd: formState.payment_tolerance_usd,
+      })
+
+      // Update local state after successful API call
+      setFormState((current) => ({
+        ...current,
+        payment_networks: updatedNetworks,
+      }))
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Failed to delete payment network'))
+    } finally {
+      setNetworkSaving(false)
+    }
   }
 
   const handleSaveBilling = async () => {
