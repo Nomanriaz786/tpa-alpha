@@ -1,0 +1,48 @@
+# FastAPI Backend Dependencies
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Database
+sqlalchemy==2.0.25
+asyncpg==0.29.0
+alembic==1.13.1
+
+# Discord
+discord.py==2.3.2
+
+# Blockchain / Web3
+web3==6.14.0
+eth-typing==4.0.0
+eth-keys==0.6.1
+
+# Solana 
+solana==0.36.11
+
+# Email
+python-multipart==0.0.6
+
+# Security
+bcrypt==4.1.2
+python-jose[cryptography]==3.3.0
+passlib==1.7.4
+cryptography==41.0.7
+PyNaCl==1.5.0
+
+# Task scheduling
+APScheduler==3.10.4
+
+# HTTP client
+httpx==0.26.0
+
+# Rate limiting
+slowapi==0.1.9
+
+# Utilities
+python-dotenv==1.0.0
+pytz==2023.3
+
+# Development
+pytest==7.4.4
+pytest-asyncio==0.23.3
