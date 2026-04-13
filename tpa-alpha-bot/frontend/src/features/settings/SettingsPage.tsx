@@ -172,6 +172,20 @@ export default function SettingsPage() {
     })
   }
 
+  const persistPaymentNetworks = async (nextNetworks: PaymentNetworkConfig[]) => {
+    const paymentNetworks = nextNetworks.map(buildNetworkUpdate)
+    const response = await adminAPI.updateSettings({
+      wallets: buildWalletMap(paymentNetworks),
+      payment_networks: paymentNetworks,
+    })
+
+    setFormState((current) => ({
+      ...current,
+      wallets: response.wallets,
+      payment_networks: response.payment_networks,
+    }))
+  }
+
   const saveNetworkDraft = async () => {
     if (!networkDraft) {
       return
@@ -186,39 +200,17 @@ export default function SettingsPage() {
     setNetworkSaving(true)
     setError(null)
 
+    const nextNetwork: PaymentNetworkConfig = {
+      ...createEmptyNetwork(normalized.network_code),
+      ...normalized,
+    }
+
+    const nextNetworks = editingNetworkIndex === null
+      ? [...formState.payment_networks, nextNetwork]
+      : formState.payment_networks.map((network, index) => (index === editingNetworkIndex ? nextNetwork : network))
+
     try {
-      const nextNetwork: PaymentNetworkConfig = {
-        ...createEmptyNetwork(normalized.network_code),
-        ...normalized,
-      }
-
-      // Update local state and capture updated networks
-      let updatedNetworks: PaymentNetworkConfig[] = []
-      setFormState((current) => {
-        const paymentNetworks = [...current.payment_networks]
-        if (editingNetworkIndex === null) {
-          paymentNetworks.push(nextNetwork)
-        } else {
-          paymentNetworks[editingNetworkIndex] = nextNetwork
-        }
-        updatedNetworks = paymentNetworks
-        return {
-          ...current,
-          payment_networks: paymentNetworks,
-        }
-      })
-
-      // Build complete payment networks array including all existing ones
-      const allNetworks = updatedNetworks.map(buildNetworkUpdate)
-
-      // Call API to save
-      await adminAPI.updateSettings({
-        wallets: buildWalletMap(allNetworks),
-        payment_networks: allNetworks,
-        price_per_month_usd: formState.price_per_month_usd,
-        payment_tolerance_usd: formState.payment_tolerance_usd,
-      })
-
+      await persistPaymentNetworks(nextNetworks)
       closeNetworkEditor()
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to save payment network'))
@@ -233,25 +225,12 @@ export default function SettingsPage() {
 
   const removeNetwork = async (index: number) => {
     setError(null)
+
+    const nextNetworks = formState.payment_networks.filter((_, networkIndex) => networkIndex !== index)
+
     setNetworkSaving(true)
-
     try {
-      const updatedNetworks = formState.payment_networks.filter((_, networkIndex) => networkIndex !== index)
-      const allNetworks = updatedNetworks.map(buildNetworkUpdate)
-
-      // Save to backend immediately
-      await adminAPI.updateSettings({
-        wallets: buildWalletMap(allNetworks),
-        payment_networks: allNetworks,
-        price_per_month_usd: formState.price_per_month_usd,
-        payment_tolerance_usd: formState.payment_tolerance_usd,
-      })
-
-      // Update local state after successful API call
-      setFormState((current) => ({
-        ...current,
-        payment_networks: updatedNetworks,
-      }))
+      await persistPaymentNetworks(nextNetworks)
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to delete payment network'))
     } finally {
@@ -272,12 +251,14 @@ export default function SettingsPage() {
         return
       }
 
-      await adminAPI.updateSettings({
+      const response = await adminAPI.updateSettings({
         wallets: buildWalletMap(paymentNetworks),
         payment_networks: paymentNetworks,
         price_per_month_usd: formState.price_per_month_usd,
         payment_tolerance_usd: formState.payment_tolerance_usd,
       })
+
+      setFormState(toFormState(response))
 
       setBillingSaved(true)
       setTimeout(() => setBillingSaved(false), 3000)
@@ -466,7 +447,7 @@ export default function SettingsPage() {
                     Add network
                   </Button>
                   <p className="text-xs text-slate-400">
-                    Row edits stay local until you click Save in the Billing section.
+                    Row saves persist the network list immediately. Billing Save still applies price and tolerance.
                   </p>
                 </div>
               </CardContent>
@@ -525,7 +506,7 @@ export default function SettingsPage() {
                   onClick={handleSaveBilling}
                   disabled={billingSaving}
                   variant="default"
-                  className="ml-auto"
+                  className="ml-auto bg-accent text-accent-foreground hover:bg-accent/90"
                 >
                   {billingSaving ? 'Saving...' : 'Save'}
                 </Button>
@@ -641,7 +622,7 @@ export default function SettingsPage() {
           footer={
             <div className="flex w-full flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-slate-400">
-                This only updates the draft until you click Save in the Billing section.
+                Save row persists the full network list. Billing Save handles price and tolerance.
               </p>
               <div className="flex flex-wrap items-center justify-end gap-3">
                 <Button
