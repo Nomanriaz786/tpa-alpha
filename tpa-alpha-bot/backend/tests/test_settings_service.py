@@ -78,6 +78,37 @@ def test_build_admin_settings_uses_wallet_fallback_when_network_rows_are_missing
     assert settings.payment_networks[0].token_contract == "0x55d398326f99059fF775485246999027B3197955"
 
 
+def test_build_admin_settings_preserves_explicit_empty_wallets_without_repopulating_defaults():
+    settings = build_admin_settings(
+        {
+            "wallets": {},
+            "smtp_host": "smtp.example.com",
+            "smtp_port": 2525,
+            "smtp_user": "mailer@example.com",
+            "admin_email": "admin@example.com",
+            "price_per_month_usd": "100",
+            "payment_tolerance_usd": "5",
+        },
+        payment_network_rows=[],
+        env_settings=SimpleNamespace(
+            WALLETS={
+                "BSC_USDT": "0xenv0000000000000000000000000000000000000001",
+                "BSC_USDC": "0xenv0000000000000000000000000000000000000002",
+            },
+            PAYMENT_MIN_CONFIRMATIONS=10,
+            PAYMENT_TOLERANCE_USD=Decimal("5"),
+            PRICE_PER_MONTH_USD=Decimal("100"),
+            SMTP_HOST="smtp.gmail.com",
+            SMTP_PORT=587,
+            SMTP_USER="",
+            ADMIN_EMAIL="admin@example.com",
+        ),
+    )
+
+    assert settings.wallets == {}
+    assert settings.payment_networks == []
+
+
 def test_admin_settings_update_allows_derived_token_contracts():
     payload = AdminSettingsUpdate(
         payment_networks=[

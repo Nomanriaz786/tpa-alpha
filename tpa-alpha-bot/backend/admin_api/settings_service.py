@@ -10,7 +10,6 @@ from typing import Any, Optional
 
 from sqlalchemy import bindparam, text
 
-from config import get_active_networks
 from schemas import AdminSettings, NetworkInfo, PaymentNetworkConfig
 from services.guild_settings import load_guild_settings_rows, normalize_guild_settings_rows
 
@@ -188,19 +187,7 @@ def normalize_payment_network_rows(
                 for network_code, wallet in wallets.items()
             ]
         else:
-            rows = [
-                {
-                    "network_code": network_info["id"],
-                    "label": network_info["label"],
-                    "chain": network_info["chain"],
-                    "wallet": network_info["wallet"],
-                    "token_contract": _network_metadata(network_info["id"], settings)["token_contract"],
-                    "min_confirmations": getattr(settings, "PAYMENT_MIN_CONFIRMATIONS", 10),
-                    "tolerance_usd": getattr(settings, "PAYMENT_TOLERANCE_USD", Decimal("5")),
-                    "is_active": True,
-                }
-                for network_info in get_active_networks()
-            ]
+            return []
 
     normalized: list[PaymentNetworkConfig] = []
     for row in rows:
