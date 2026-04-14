@@ -466,6 +466,11 @@ class AdminCommands(commands.Cog):
                 value="By remaining in this server, you agree to the rules, policies, and disclaimers listed below.",
                 inline=False
             )
+            embed1.add_field(
+                name="Verification",
+                value="Check your DMs for the Verify Account button. Verification only happens in DM, not in this channel. If you do not see a DM, enable DMs from server members and contact staff.",
+                inline=False
+            )
             
             # Embed 2: Premium Membership
             embed2 = discord.Embed(
