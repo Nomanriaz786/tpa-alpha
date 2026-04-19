@@ -5,10 +5,10 @@ After=network.target tpa-backend.service
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/home/ubuntu/apps/tpa-alpha-bot
-Environment="PATH=/home/ubuntu/apps/tpa-alpha-bot/backend/venv/bin"
-EnvironmentFile=/home/ubuntu/apps/tpa-alpha-bot/.env
-ExecStart=/home/ubuntu/apps/tpa-alpha-bot/backend/venv/bin/python bot/bot.py
+WorkingDirectory=/var/www/tpa-alpha/tpa-alpha-bot
+Environment="PATH=/var/www/tpa-alpha/tpa-alpha-bot/backend/venv/bin"
+EnvironmentFile=/var/www/tpa-alpha/tpa-alpha-bot/backend/.env
+ExecStart=/var/www/tpa-alpha/tpa-alpha-bot/backend/venv/bin/python bot/bot.py
 Restart=always
 RestartSec=10
 StandardOutput=journal
