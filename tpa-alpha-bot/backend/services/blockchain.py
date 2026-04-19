@@ -13,7 +13,6 @@ from decimal import Decimal
 from typing import Optional, Any
 
 from sqlalchemy import select, text
-from sqlalchemy import select, text
 from web3 import Web3
 from web3.middleware.geth_poa import geth_poa_middleware
 
@@ -81,7 +80,7 @@ def _normalize_channel_id(value: Any) -> str | None:
     normalized = str(value or "").strip()
     return normalized or None
 
-            exists = await session.scalar(select(Affiliate.code).where(Affiliate.code == candidate))
+
 async def _resolve_payment_log_channel_id(discord, guild_settings: Any) -> str | None:
     explicit_channel_id = _normalize_channel_id(getattr(guild_settings, "payment_logs_channel_id", None))
     if explicit_channel_id:
@@ -93,26 +92,20 @@ async def _resolve_payment_log_channel_id(discord, guild_settings: Any) -> str |
 
     return _normalize_channel_id(getattr(guild_settings, "admin_channel_id", None))
 
-        affiliate_result = await session.execute(
-            select(Affiliate.id, Affiliate.code, Affiliate.is_active, Affiliate.name).where(
-                Affiliate.discord_id == subscriber.discord_id,
-                Affiliate.type == "member",
-            )
+
+async def _send_payment_verification_log(
+    discord,
+    guild_settings: Any,
+    pending: PendingPayment,
     subscriber: Subscriber,
-        affiliate = affiliate_result.mappings().one_or_none()
-        if affiliate:
-            updates: dict[str, object] = {}
-            if not affiliate["is_active"]:
-                updates["is_active"] = True
-            if not affiliate["name"]:
-                updates["name"] = subscriber.tradingview_username or pending.tradingview_username
+    tx_hash: str,
+    amount_usd: Decimal,
+    months_granted: int,
+    role_assigned: bool,
+    dm_sent: bool,
+) -> bool:
     channel_id = await _resolve_payment_log_channel_id(discord, guild_settings)
-            if updates:
-                set_clause = ", ".join(f"{field} = :{field}" for field in updates)
-                updates["id"] = affiliate["id"]
-                await session.execute(text(f"UPDATE affiliates SET {set_clause} WHERE id = :id"), updates)
     if not channel_id:
-            return affiliate["code"]
         logger.warning("Payment log channel is not configured and no fallback channel was found")
         return False
 
