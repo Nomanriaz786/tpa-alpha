@@ -12,7 +12,8 @@ from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from typing import Optional, Any
 
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy import select, text
 from web3 import Web3
 from web3.middleware.geth_poa import geth_poa_middleware
 
@@ -80,7 +81,7 @@ def _normalize_channel_id(value: Any) -> str | None:
     normalized = str(value or "").strip()
     return normalized or None
 
-
+            exists = await session.scalar(select(Affiliate.code).where(Affiliate.code == candidate))
 async def _resolve_payment_log_channel_id(discord, guild_settings: Any) -> str | None:
     explicit_channel_id = _normalize_channel_id(getattr(guild_settings, "payment_logs_channel_id", None))
     if explicit_channel_id:
@@ -92,20 +93,26 @@ async def _resolve_payment_log_channel_id(discord, guild_settings: Any) -> str |
 
     return _normalize_channel_id(getattr(guild_settings, "admin_channel_id", None))
 
-
-async def _send_payment_verification_log(
-    discord,
-    guild_settings: Any,
-    pending: PendingPayment,
+        affiliate_result = await session.execute(
+            select(Affiliate.id, Affiliate.code, Affiliate.is_active, Affiliate.name).where(
+                Affiliate.discord_id == subscriber.discord_id,
+                Affiliate.type == "member",
+            )
     subscriber: Subscriber,
-    tx_hash: str,
-    amount_usd: Decimal,
-    months_granted: int,
-    role_assigned: bool,
-    dm_sent: bool,
-) -> bool:
+        affiliate = affiliate_result.mappings().one_or_none()
+        if affiliate:
+            updates: dict[str, object] = {}
+            if not affiliate["is_active"]:
+                updates["is_active"] = True
+            if not affiliate["name"]:
+                updates["name"] = subscriber.tradingview_username or pending.tradingview_username
     channel_id = await _resolve_payment_log_channel_id(discord, guild_settings)
+            if updates:
+                set_clause = ", ".join(f"{field} = :{field}" for field in updates)
+                updates["id"] = affiliate["id"]
+                await session.execute(text(f"UPDATE affiliates SET {set_clause} WHERE id = :id"), updates)
     if not channel_id:
+            return affiliate["code"]
         logger.warning("Payment log channel is not configured and no fallback channel was found")
         return False
 
@@ -170,45 +177,68 @@ async def _generate_member_affiliate_code(session, pending: PendingPayment) -> s
             seen_candidates.append(normalized)
 
     for candidate in seen_candidates:
-        exists = await session.scalar(select(Affiliate).where(Affiliate.code == candidate))
+        exists = await session.scalar(select(Affiliate.code).where(Affiliate.code == candidate))
         if not exists:
             return candidate
 
     while True:
         candidate = f"TPA{uuid.uuid4().hex[:8].upper()}"[:20]
-        exists = await session.scalar(select(Affiliate).where(Affiliate.code == candidate))
+        exists = await session.scalar(select(Affiliate.code).where(Affiliate.code == candidate))
         if not exists:
             return candidate
 
 
-async def _ensure_member_affiliate(session, subscriber: Subscriber, pending: PendingPayment) -> Affiliate:
-    affiliate = await session.scalar(
-        select(Affiliate).where(
+async def _ensure_member_affiliate(session, subscriber: Subscriber, pending: PendingPayment) -> str:
+    affiliate_result = await session.execute(
+        select(Affiliate.id, Affiliate.code, Affiliate.is_active, Affiliate.name).where(
             Affiliate.discord_id == subscriber.discord_id,
             Affiliate.type == "member",
         )
     )
+    affiliate = affiliate_result.mappings().one_or_none()
     if affiliate:
-        if not affiliate.is_active:
-            affiliate.is_active = True
-        if not affiliate.name:
-            affiliate.name = subscriber.tradingview_username or pending.tradingview_username
-        return affiliate
+        updates: dict[str, object] = {}
+        if not affiliate["is_active"]:
+            updates["is_active"] = True
+        if not affiliate["name"]:
+            updates["name"] = subscriber.tradingview_username or pending.tradingview_username
+
+        if updates:
+            set_clause = ", ".join(f"{field} = :{field}" for field in updates)
+            updates["id"] = affiliate["id"]
+            await session.execute(text(f"UPDATE affiliates SET {set_clause} WHERE id = :id"), updates)
+
+        return affiliate["code"]
 
     code = await _generate_member_affiliate_code(session, pending)
-    affiliate = Affiliate(
-        code=code,
-        discord_id=subscriber.discord_id,
-        name=subscriber.tradingview_username or pending.tradingview_username,
-        type="member",
-        discount_percent=Decimal("0"),
-        commission_percent=Decimal("20"),
-        is_active=True,
+    await session.execute(
+        text(
+            """
+            INSERT INTO affiliates (
+                id, code, discord_id, name, type, discount_percent,
+                commission_percent, usage_limit, is_active, created_at
+            )
+            VALUES (
+                :id, :code, :discord_id, :name, :type, :discount_percent,
+                :commission_percent, :usage_limit, :is_active, :created_at
+            )
+            """
+        ),
+        {
+            "id": uuid.uuid4(),
+            "code": code,
+            "discord_id": subscriber.discord_id,
+            "name": subscriber.tradingview_username or pending.tradingview_username,
+            "type": "member",
+            "discount_percent": Decimal("0"),
+            "commission_percent": Decimal("20"),
+            "usage_limit": None,
+            "is_active": True,
+            "created_at": _now_utc(),
+        },
     )
-    session.add(affiliate)
-    await session.flush()
     logger.info("Created member affiliate code %s for subscriber %s", code, subscriber.discord_id)
-    return affiliate
+    return code
 
 
 async def _get_web3() -> Web3:
@@ -430,18 +460,18 @@ async def finalize_verified_payment(
             network=pending.network,
         )
         session.add(payment)
-        member_affiliate = await _ensure_member_affiliate(session, subscriber, pending)
+        member_affiliate_code = await _ensure_member_affiliate(session, subscriber, pending)
 
         if pending.affiliate_code:
-            affiliate = await session.scalar(
-                select(Affiliate).where(Affiliate.code == pending.affiliate_code, Affiliate.is_active == True)
+            affiliate_code = await session.scalar(
+                select(Affiliate.code).where(Affiliate.code == pending.affiliate_code, Affiliate.is_active == True)
             )
-            if affiliate:
-                logger.info("Affiliate %s used for subscriber %s", affiliate.code, subscriber.discord_id)
+            if affiliate_code:
+                logger.info("Affiliate %s used for subscriber %s", affiliate_code, subscriber.discord_id)
         logger.info(
             "Member referral link ready for subscriber %s with code %s",
             subscriber.discord_id,
-            member_affiliate.code,
+            member_affiliate_code,
         )
 
         guild_settings = await load_effective_guild_settings(session)

@@ -17,7 +17,7 @@ from schemas import (
     PaymentProofSubmitRequest,
     NetworkInfo,
     PaymentStatusResponse,
-)
+        network_config = next((network for network in admin_settings.payment_networks if network.network_code == request.network), None)
 from database import get_session
 from models import PendingPayment, Payment, Subscriber, Affiliate
 from admin_api.settings_service import (
@@ -42,12 +42,13 @@ async def get_networks():
 
 @router.post("/initiate", response_model=PaymentInitiateResponse)
 async def initiate_payment(request: PaymentInitiateRequest):
-    """
-    Initiate payment - create pending payment record
-    
-    POST /api/payment/initiate
-    {
-        "discord_id": "...",
+                affiliate = await session.execute(
+                    select(Affiliate.code, Affiliate.discount_percent).where(
+                        Affiliate.code == normalized_affiliate_code,
+                        Affiliate.is_active == True,
+                    )
+                )
+                affiliate_row = affiliate.mappings().one_or_none()
         "discord_username": "...",
         "tradingview_username": "...",  <- REQUIRED
         "email": "...",
@@ -86,20 +87,21 @@ async def initiate_payment(request: PaymentInitiateRequest):
     
     if normalized_affiliate_code:
         async with get_session() as session:
-            affiliate = await session.scalar(
-                select(Affiliate).where(
+            affiliate = await session.execute(
+                select(Affiliate.code, Affiliate.discount_percent).where(
                     Affiliate.code == normalized_affiliate_code,
                     Affiliate.is_active == True,
                 )
             )
+            affiliate_row = affiliate.mappings().one_or_none()
 
-            if not affiliate:
+            if not affiliate_row:
                 raise HTTPException(
                     status_code=400,
                     detail="Invalid or inactive affiliate code"
                 )
 
-            discount_percent = Decimal(affiliate.discount_percent)
+            discount_percent = Decimal(affiliate_row["discount_percent"])
             discount_applied = admin_settings.price_per_month_usd * (discount_percent / 100)
     
     # Calculate effective price
